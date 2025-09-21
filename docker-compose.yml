@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16
+    container_name: db
+    environment:
+      POSTGRES_DB: fd_db
+      POSTGRES_USER: fd_user
+      POSTGRES_PASSWORD: fd_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - fds-network
+
+  flyway:
+    image: flyway/flyway:10
+    depends_on:
+      - db
+    command: -url=jdbc:postgresql://db:5432/fd_db -user=fd_user -password=fd_pass migrate
+    volumes:
+      - ./backend/src/main/resources/db/migration:/flyway/sql
+    networks:
+      - fds-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/fd_db
+      SPRING_DATASOURCE_USERNAME: fd_user
+      SPRING_DATASOURCE_PASSWORD: fd_pass
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/pom.xml:/app/pom.xml
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+    command: ["mvn", "spring-boot:run"]
+    networks:
+      - fds-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - fds-network
+
+volumes:
+  db_data:
+
+networks:
+  fds-network:
